@@ -1,14 +1,17 @@
 FROM python:3.11
 
-# Install ImageMagick
-RUN apt-get update && apt-get install -y imagemagick
+# Install ImageMagick + Potrace
+RUN apt-get update && apt-get install -y \
+    imagemagick \
+    potrace \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
 # Copy requirements and install Python packages
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
