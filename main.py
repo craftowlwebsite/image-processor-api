@@ -59,47 +59,26 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG data to SVG using ImageMagick"""
+    """Convert PNG data to SVG by embedding the PNG as base64"""
     try:
-        # Create temporary files
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
-            temp_png.write(png_data)
-            temp_png_path = temp_png.name
+        # Get image dimensions
+        img = Image.open(io.BytesIO(png_data))
+        width, height = img.size
         
-        temp_svg_path = temp_png_path.replace('.png', '.svg')
+        # Convert PNG to base64
+        png_base64 = base64.b64encode(png_data).decode('utf-8')
         
-        # Try different ImageMagick commands
-        try:
-            # First try with 'magick' command
-            subprocess.run([
-                'magick', 'convert',
-                temp_png_path,
-                '-background', 'transparent',
-                temp_svg_path
-            ], check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # Fallback to 'convert' command
-            subprocess.run([
-                'convert',
-                temp_png_path,
-                '-background', 'transparent',
-                temp_svg_path
-            ], check=True)
+        # Create SVG with embedded PNG
+        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <image x="0" y="0" width="{width}" height="{height}" xlink:href="data:image/png;base64,{png_base64}"/>
+</svg>'''
         
-        # Read the SVG file
-        with open(temp_svg_path, 'rb') as f:
-            svg_data = f.read()
+        return svg_content.encode('utf-8')
         
-        # Clean up temp files
-        os.unlink(temp_png_path)
-        os.unlink(temp_svg_path)
-        
-        return svg_data
-        
-    except subprocess.CalledProcessError as e:
-        raise Exception(f"ImageMagick conversion failed: {str(e)}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
     """Endpoint for background removal - requires authentication"""
