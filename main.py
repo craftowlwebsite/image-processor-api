@@ -13,7 +13,7 @@ app = Flask(__name__)
 TARGET_SIZE = (4096, 4096)
 
 # Simple API key authentication
-API_KEY = 'sk_7x9mK2nP8qL5vR3wF6jE4tY1uA9sC2nX7pL8mK5qR3wF6jE4tY1uA9sC2nX7pL8m'
+API_KEY = ''
 
 def authenticate():
     """Check if request has valid API key"""
