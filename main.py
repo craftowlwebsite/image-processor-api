@@ -137,6 +137,42 @@ def svg_only():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/process-both', methods=['POST'])
+def process_both():
+    """Endpoint that returns both transparent PNG and SVG"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        data = request.json
+        
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        # Process for transparent background
+        processed_png_data = make_transparent(image_data)
+        processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
+        
+        # Convert processed image to SVG
+        svg_data = convert_png_to_svg(processed_png_data)
+        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'transparent_png': processed_png_base64,
+            'svg': svg_base64,
+            'png_size': len(processed_png_data),
+            'svg_size': len(svg_data)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
