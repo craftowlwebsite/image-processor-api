@@ -61,23 +61,36 @@ def make_transparent(image_data):
 def convert_png_to_svg(png_data):
     """Convert PNG data to SVG using ImageMagick"""
     try:
+        # Create temporary files
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
             temp_png.write(png_data)
             temp_png_path = temp_png.name
         
         temp_svg_path = temp_png_path.replace('.png', '.svg')
         
-        subprocess.run([
-            'magick',
-            temp_png_path,
-            '-background', 'none',
-            '-density', '300',
-            temp_svg_path
-        ], check=True)
+        # Try different ImageMagick commands
+        try:
+            # First try with 'magick' command
+            subprocess.run([
+                'magick', 'convert',
+                temp_png_path,
+                '-background', 'transparent',
+                temp_svg_path
+            ], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback to 'convert' command
+            subprocess.run([
+                'convert',
+                temp_png_path,
+                '-background', 'transparent',
+                temp_svg_path
+            ], check=True)
         
+        # Read the SVG file
         with open(temp_svg_path, 'rb') as f:
             svg_data = f.read()
         
+        # Clean up temp files
         os.unlink(temp_png_path)
         os.unlink(temp_svg_path)
         
@@ -87,7 +100,6 @@ def convert_png_to_svg(png_data):
         raise Exception(f"ImageMagick conversion failed: {str(e)}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
-
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
     """Endpoint for background removal - requires authentication"""
@@ -152,11 +164,3 @@ def health():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-@app.route('/debug-key', methods=['GET'])
-
-def debug_key():
-    return jsonify({
-        'api_key_set': bool(os.environ.get('API_KEY')), 
-        'api_key_length': len(os.environ.get('API_KEY', '')),
-        'api_key_first_10': os.environ.get('API_KEY', '')[:10]
-    })
