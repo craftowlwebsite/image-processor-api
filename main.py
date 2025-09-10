@@ -10,11 +10,21 @@ from pathlib import Path
 
 app = Flask(__name__)
 
-TARGET_SIZE = (4096, 4096)  # Updated to 4096x4096
+TARGET_SIZE = (4096, 4096)
 
-def check_size(img):
-    """Check if image matches target size"""
-    return img.size == TARGET_SIZE
+# Simple API key authentication
+API_KEY = os.environ.get('API_KEY', 'your-secret-key-here')
+
+def authenticate():
+    """Check if request has valid API key"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return False
+    try:
+        scheme, token = auth_header.split(' ', 1)
+        return scheme.lower() == 'bearer' and token == API_KEY
+    except:
+        return False
 
 def make_transparent(image_data):
     """Convert PNG to binary black and transparent"""
@@ -80,7 +90,10 @@ def convert_png_to_svg(png_data):
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
-    """Endpoint for just background removal"""
+    """Endpoint for background removal - requires authentication"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+        
     try:
         data = request.json
         
@@ -99,6 +112,35 @@ def transparent_only():
             'success': True,
             'processed_image': processed_base64,
             'size': len(processed_data)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/svg', methods=['POST'])
+def svg_only():
+    """Endpoint for SVG conversion - requires authentication"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        data = request.json
+        
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        svg_data = convert_png_to_svg(image_data)
+        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'svg': svg_base64,
+            'size': len(svg_data)
         })
         
     except Exception as e:
