@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from PIL import Image
 import io
 import base64
@@ -6,7 +6,6 @@ import requests
 import subprocess
 import tempfile
 import os
-from pathlib import Path
 
 app = Flask(__name__)
 
@@ -25,6 +24,7 @@ def authenticate():
         return scheme.lower() == 'bearer' and token == API_KEY
     except:
         return False
+
 
 def make_transparent(image_data):
     """Convert PNG to binary black and transparent"""
@@ -58,42 +58,35 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
+
 def convert_png_to_svg(png_data):
-    """Convert PNG data to SVG with vector paths"""
+    """Convert PNG bytes to SVG using ImageMagick"""
     try:
-        # Get image and convert to numpy array for processing
-        img = Image.open(io.BytesIO(png_data))
-        width, height = img.size
-        
-        # Convert to RGBA and get pixel data
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
-        
-        # Simple approach: create rectangles for each black pixel
-        # This is basic but will work for cutting machines
-        pixels = img.load()
-        paths = []
-        
-        # Sample every few pixels to avoid huge SVG files
-        step = max(1, min(width, height) // 1000)  # Adjust detail level
-        
-        for y in range(0, height, step):
-            for x in range(0, width, step):
-                pixel = pixels[x, y]
-                # If pixel is black and opaque
-                if pixel[3] > 0 and sum(pixel[:3]) < 300:  # Black pixel
-                    paths.append(f'<rect x="{x}" y="{y}" width="{step}" height="{step}" fill="black"/>')
-        
-        # Create SVG with vector rectangles
-        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}">
-  <g>
-    {''.join(paths)}
-  </g>
-</svg>'''
-        
-        return svg_content.encode('utf-8')
-        
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
+            temp_in.write(png_data)
+            temp_in.flush()
+            temp_in_path = temp_in.name
+
+        temp_out_path = tempfile.mktemp(suffix=".svg")
+
+        subprocess.run([
+            "magick",
+            temp_in_path,
+            "-background", "none",
+            "-density", "300",
+            temp_out_path
+        ], check=True)
+
+        with open(temp_out_path, "rb") as f:
+            svg_data = f.read()
+
+        # cleanup
+        os.remove(temp_in_path)
+        os.remove(temp_out_path)
+
+        return svg_data
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"ImageMagick failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
 
@@ -127,6 +120,7 @@ def transparent_only():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/svg', methods=['POST'])
 def svg_only():
     """Endpoint for SVG conversion - requires authentication"""
@@ -155,6 +149,7 @@ def svg_only():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/process-both', methods=['POST'])
 def process_both():
@@ -192,9 +187,11 @@ def process_both():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
