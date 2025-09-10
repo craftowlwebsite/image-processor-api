@@ -58,38 +58,43 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
-
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to SVG using ImageMagick"""
+    """Convert PNG bytes to vectorized SVG using Potrace"""
     try:
+        # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
             temp_in.flush()
             temp_in_path = temp_in.name
 
+        temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        subprocess.run([
-            "magick",
-            temp_in_path,
-            "-background", "none",
-            "-density", "300",
-            temp_out_path
-        ], check=True)
+        # Convert PNG to PBM (bitmap format for Potrace)
+        subprocess.run(
+            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
+            check=True
+        )
+
+        # Run Potrace to vectorize PBM → SVG
+        subprocess.run(
+            ["potrace", "-s", "-o", temp_out_path, temp_pbm],
+            check=True
+        )
 
         with open(temp_out_path, "rb") as f:
             svg_data = f.read()
 
         # cleanup
-        os.remove(temp_in_path)
-        os.remove(temp_out_path)
+        for p in [temp_in_path, temp_pbm, temp_out_path]:
+            if os.path.exists(p):
+                os.remove(p)
 
         return svg_data
     except subprocess.CalledProcessError as e:
-        raise Exception(f"ImageMagick failed: {e}")
+        raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
-
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
