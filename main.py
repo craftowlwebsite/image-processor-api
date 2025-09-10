@@ -59,25 +59,44 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG data to SVG by embedding the PNG as base64"""
+    """Convert PNG data to SVG with vector paths"""
     try:
-        # Get image dimensions
+        # Get image and convert to numpy array for processing
         img = Image.open(io.BytesIO(png_data))
         width, height = img.size
         
-        # Convert PNG to base64
-        png_base64 = base64.b64encode(png_data).decode('utf-8')
+        # Convert to RGBA and get pixel data
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
         
-        # Create SVG with embedded PNG
+        # Simple approach: create rectangles for each black pixel
+        # This is basic but will work for cutting machines
+        pixels = img.load()
+        paths = []
+        
+        # Sample every few pixels to avoid huge SVG files
+        step = max(1, min(width, height) // 1000)  # Adjust detail level
+        
+        for y in range(0, height, step):
+            for x in range(0, width, step):
+                pixel = pixels[x, y]
+                # If pixel is black and opaque
+                if pixel[3] > 0 and sum(pixel[:3]) < 300:  # Black pixel
+                    paths.append(f'<rect x="{x}" y="{y}" width="{step}" height="{step}" fill="black"/>')
+        
+        # Create SVG with vector rectangles
         svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <image x="0" y="0" width="{width}" height="{height}" xlink:href="data:image/png;base64,{png_base64}"/>
+<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}">
+  <g>
+    {''.join(paths)}
+  </g>
 </svg>'''
         
         return svg_content.encode('utf-8')
         
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
