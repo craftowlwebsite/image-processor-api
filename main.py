@@ -50,7 +50,7 @@ def make_transparent(image_data):
         new_img.putdata(new_data)
         
         output = io.BytesIO()
-        new_img.save(output, format='PNG')
+        new_img.save(output, format='PNG', dpi=(300, 300))
         output.seek(0)
         
         return output.getvalue()
