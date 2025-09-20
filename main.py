@@ -59,7 +59,7 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG with adaptive preprocessing"""
+    """Convert PNG bytes to vectorized SVG letting Potrace handle thresholding"""
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
@@ -69,22 +69,19 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Preprocess PNG → PBM with adaptive levels
-        subprocess.run([
-            "magick", temp_in_path,
-            "-colorspace", "gray",
-            "-level", "40%,70%",
-            "-dither", "None",
-            "-threshold", "60%",
-            temp_pbm
-        ], check=True)
+        # Convert PNG to PBM without hard threshold
+        subprocess.run(
+            ["magick", temp_in_path, "-colorspace", "gray", temp_pbm],
+            check=True
+        )
 
-        # Potrace with tighter control
+        # Potrace with internal threshold (blacklevel)
         subprocess.run([
             "potrace", "-s",
-            "-t", "3",          # lower corner threshold
-            "-O", "0.5",        # moderate optimization
-            "--alphamax", "1.2",
+            "--blacklevel", "0.6",  # tweakable: 0.5 is mid gray
+            "-O", "0.5",            # moderate smoothness
+            "-t", "4",              # corner threshold
+            "-a", "1",              # area threshold
             "-o", temp_out_path, temp_pbm
         ], check=True)
 
@@ -100,7 +97,6 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
-
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
