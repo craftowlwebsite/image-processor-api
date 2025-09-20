@@ -58,43 +58,28 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
-
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Autotrace"""
+    """Convert PNG bytes to vectorized SVG using Inkscape's trace-bitmap"""
     try:
-        # Save temp PNG
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
             temp_in.flush()
             temp_in_path = temp_in.name
 
-        temp_pnm = tempfile.mktemp(suffix=".pnm")   # Autotrace prefers PNM/PPM input
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Step 1: Convert PNG → PNM
+        # Run Inkscape trace-bitmap (bitmap → SVG)
         subprocess.run([
-            "magick", temp_in_path,
-            "-colorspace", "gray",
-            temp_pnm
+            "inkscape",
+            temp_in_path,
+            "--export-plain-svg", temp_out_path,
+            "--trace-bitmap"
         ], check=True)
 
-        # Step 2: Run Autotrace
-        subprocess.run([
-            "autotrace", temp_pnm,
-            "--output-file", temp_out_path,
-            "--output-format", "svg",
-            "--color-count", "2",       # monochrome (adjustable)
-            "--despeckle-level", "2",   # remove small noise
-            "--filter-iterations", "3", # smooth curves
-            "--corner-threshold", "100" # fewer jagged corners
-        ], check=True)
-
-        # Step 3: Read back SVG
         with open(temp_out_path, "rb") as f:
             svg_bytes = f.read()
 
-        # Cleanup
-        for p in [temp_in_path, temp_pnm, temp_out_path]:
+        for p in [temp_in_path, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
@@ -103,7 +88,6 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
-
 
 
 @app.route('/transparent', methods=['POST'])
