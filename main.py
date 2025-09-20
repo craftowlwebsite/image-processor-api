@@ -59,7 +59,7 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Potrace"""
+    """Convert PNG bytes to smoother vectorized SVG using Potrace"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -70,17 +70,24 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG to PBM (bitmap format for Potrace)
-        subprocess.run(
-            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
-            check=True
-        )
+        # Preprocess: grayscale, blur, threshold (no resize since already 4096x4096)
+        subprocess.run([
+            "magick", temp_in_path,
+            "-colorspace", "Gray",
+            "-blur", "0x1",
+            "-threshold", "60%",
+            temp_pbm
+        ], check=True)
 
-        # Run Potrace to vectorize PBM → SVG
-        subprocess.run(
-            ["potrace", "-s", "-o", temp_out_path, temp_pbm],
-            check=True
-        )
+        # Run Potrace with smoothing options
+        subprocess.run([
+            "potrace", "-s",
+            "--turdsize", "10",
+            "--alphamax", "1.5",
+            "--opttolerance", "0.5",
+            "-o", temp_out_path,
+            temp_pbm
+        ], check=True)
 
         with open(temp_out_path, "rb") as f:
             svg_data = f.read()
@@ -95,6 +102,7 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
