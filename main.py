@@ -59,7 +59,7 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to smoother vectorized SVG using Potrace"""
+    """Convert PNG bytes to smoother vectorized SVG using Potrace with adaptive thresholding"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -70,12 +70,12 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Preprocess: grayscale, blur, threshold (no resize since already 4096x4096)
+        # Preprocess: grayscale, slight blur, adaptive threshold (Otsu)
         subprocess.run([
             "magick", temp_in_path,
             "-colorspace", "Gray",
-            "-blur", "0x1",
-            "-threshold", "60%",
+            "-blur", "0x0.5",
+            "-auto-threshold", "OTSU",
             temp_pbm
         ], check=True)
 
