@@ -59,7 +59,6 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
-
 def convert_png_to_svg(png_data):
     """Convert PNG bytes to vectorized SVG using Potrace + Scour via subprocess"""
     try:
@@ -86,11 +85,9 @@ def convert_png_to_svg(png_data):
             check=True
         )
 
-        # Run Scour via Python module (always available)
+        # Run Scour with minimal args (works across versions)
         subprocess.run(
-            ["python", "-m", "scour", "-i", temp_out_path, "-o", temp_scour_out_path,
-             "--enable-viewboxing", "--enable-id-stripping",
-             "--enable-comment-stripping", "--shorten-ids"],
+            ["python", "-m", "scour", "-i", temp_out_path, "-o", temp_scour_out_path],
             check=True
         )
 
@@ -107,8 +104,6 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
-
-
 
 
 @app.route('/transparent', methods=['POST'])
