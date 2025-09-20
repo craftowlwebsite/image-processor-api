@@ -73,43 +73,44 @@ def make_transparent(image_data):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating transparent version: {str(e)}")
 
-def convert_png_to_svg(image_data):
-    """Convert PNG bytes to SVG using ImageMagick"""
+def convert_png_to_svg(png_data):
+    """Convert PNG bytes to vectorized SVG using Potrace"""
     try:
-        # Create temporary files
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_input:
-            temp_input.write(image_data)
-            temp_input_path = temp_input.name
-        
-        with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as temp_output:
-            temp_output_path = temp_output.name
-        
-        try:
-            # Use magick command
-            subprocess.run([
-                'magick',
-                temp_input_path,
-                '-background', 'none',
-                '-density', '300',
-                temp_output_path
-            ], check=True)
-            
-            # Read the SVG content
-            with open(temp_output_path, 'rb') as f:
-                svg_data = f.read()
-            
-            return svg_data
-        finally:
-            # Clean up temporary files
-            if os.path.exists(temp_input_path):
-                os.unlink(temp_input_path)
-            if os.path.exists(temp_output_path):
-                os.unlink(temp_output_path)
-    
+        # Save temp PNG first
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
+            temp_in.write(png_data)
+            temp_in.flush()
+            temp_in_path = temp_in.name
+
+        temp_pbm = tempfile.mktemp(suffix=".pbm")
+        temp_out_path = tempfile.mktemp(suffix=".svg")
+
+        # Convert PNG to PBM (bitmap format for Potrace)
+        subprocess.run(
+            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
+            check=True
+        )
+
+        # Run Potrace to vectorize PBM → SVG
+        subprocess.run(
+            ["potrace", "-s", "-o", temp_out_path, temp_pbm],
+            check=True
+        )
+
+        with open(temp_out_path, "rb") as f:
+            svg_data = f.read()
+
+        # cleanup
+        for p in [temp_in_path, temp_pbm, temp_out_path]:
+            if os.path.exists(p):
+                os.remove(p)
+
+        return svg_data
     except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"ImageMagick conversion failed: {str(e)}")
+        raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"SVG conversion error: {str(e)}")
+        raise Exception(f"SVG conversion error: {str(e)}")
+
 
 @app.get("/")
 async def root():
