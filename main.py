@@ -58,9 +58,13 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
-
-def convert_png_to_svg(png_data, threshold="50%", downsample="100%"):
-    """Convert PNG bytes to vectorized SVG using Potrace with adjustable threshold and downsampling"""
+def convert_png_to_svg(png_data, threshold="50%", downsample="100%",
+                       alphamax="2.0", opttolerance="0.8", turdsize="10"):
+    """
+    Convert PNG bytes directly to vectorized SVG using Potrace.
+    Works from grayscale input (not pre-binarized transparent PNGs).
+    Allows adjustable threshold, downsampling, and Potrace params.
+    """
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -71,20 +75,21 @@ def convert_png_to_svg(png_data, threshold="50%", downsample="100%"):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG → PBM (with downsampling + threshold)
+        # Preprocess: grayscale + downsample + threshold
         subprocess.run([
             "magick", temp_in_path,
-            "-resize", downsample,      # e.g. "50%" or "25%"
-            "-threshold", threshold,
+            "-resize", downsample,     # e.g. "50%", "25%", or "100%"
+            "-colorspace", "Gray",     # grayscale for consistent thresholding
+            "-threshold", threshold,   # e.g. "50%"
             temp_pbm
         ], check=True)
 
-        # Run Potrace with smoothing options
+        # Run Potrace with tunable smoothing options
         subprocess.run([
             "potrace", "-s",
-            "--turdsize", "10",
-            "--alphamax", "2.5",
-            "--opttolerance", "0.8",
+            "--turdsize", str(turdsize),
+            "--alphamax", str(alphamax),
+            "--opttolerance", str(opttolerance),
             "-o", temp_out_path,
             temp_pbm
         ], check=True)
