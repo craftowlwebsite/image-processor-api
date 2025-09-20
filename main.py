@@ -11,6 +11,11 @@ import base64
 from pathlib import Path
 import shutil
 import uvicorn
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="PNG to SVG Converter API", version="1.0.0")
 
@@ -26,6 +31,28 @@ app.add_middleware(
 # Updated target size
 TARGET_SIZE = (4096, 4096)
 
+def check_dependencies():
+    """Check if required dependencies are available"""
+    try:
+        # Check ImageMagick
+        result = subprocess.run(['magick', '-version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error("ImageMagick not found or not working")
+            return False
+        logger.info(f"ImageMagick found: {result.stdout.split()[0:3]}")
+        
+        # Check Potrace
+        result = subprocess.run(['potrace', '--version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error("Potrace not found or not working")
+            return False
+        logger.info(f"Potrace found: {result.stdout.strip()}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error checking dependencies: {e}")
+        return False
+
 def check_size(img):
     """Check if image matches target size"""
     return img.size == TARGET_SIZE
@@ -33,6 +60,7 @@ def check_size(img):
 def make_transparent(image_data):
     """Convert PNG to binary black and transparent"""
     try:
+        logger.info("Starting transparent conversion")
         # Open the image from bytes
         img = Image.open(io.BytesIO(image_data))
         
@@ -69,56 +97,104 @@ def make_transparent(image_data):
         new_img.save(output, format='PNG')
         output.seek(0)
         
+        logger.info("Transparent conversion completed successfully")
         return output.getvalue()
     except Exception as e:
+        logger.error(f"Error in make_transparent: {e}")
         raise HTTPException(status_code=500, detail=f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
     """Convert PNG bytes to vectorized SVG using Potrace"""
     try:
-        # Save temp PNG first
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
-            temp_in.write(png_data)
-            temp_in.flush()
-            temp_in_path = temp_in.name
+        logger.info("Starting SVG conversion")
+        
+        # Create temporary files
+        temp_in_path = None
+        temp_pbm = None
+        temp_out_path = None
+        
+        try:
+            # Save temp PNG first
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
+                temp_in.write(png_data)
+                temp_in.flush()
+                temp_in_path = temp_in.name
 
-        temp_pbm = tempfile.mktemp(suffix=".pbm")
-        temp_out_path = tempfile.mktemp(suffix=".svg")
+            temp_pbm = tempfile.mktemp(suffix=".pbm")
+            temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG to PBM (bitmap format for Potrace)
-        subprocess.run(
-            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
-            check=True
-        )
+            logger.info(f"Converting PNG to PBM: {temp_in_path} -> {temp_pbm}")
+            # Convert PNG to PBM (bitmap format for Potrace)
+            result = subprocess.run(
+                ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            if not os.path.exists(temp_pbm):
+                raise Exception("PBM file was not created by ImageMagick")
 
-        # Run Potrace to vectorize PBM → SVG
-        subprocess.run(
-            ["potrace", "-s", "-o", temp_out_path, temp_pbm],
-            check=True
-        )
+            logger.info(f"Converting PBM to SVG: {temp_pbm} -> {temp_out_path}")
+            # Run Potrace to vectorize PBM → SVG
+            result = subprocess.run(
+                ["potrace", "-s", "-o", temp_out_path, temp_pbm],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            if not os.path.exists(temp_out_path):
+                raise Exception("SVG file was not created by Potrace")
 
-        with open(temp_out_path, "rb") as f:
-            svg_data = f.read()
+            with open(temp_out_path, "rb") as f:
+                svg_data = f.read()
 
-        # cleanup
-        for p in [temp_in_path, temp_pbm, temp_out_path]:
-            if os.path.exists(p):
-                os.remove(p)
+            logger.info("SVG conversion completed successfully")
+            return svg_data
 
-        return svg_data
+        finally:
+            # cleanup
+            for p in [temp_in_path, temp_pbm, temp_out_path]:
+                if p and os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except:
+                        pass
+
     except subprocess.CalledProcessError as e:
-        raise Exception(f"Vectorization failed: {e}")
+        logger.error(f"Subprocess error: {e}")
+        logger.error(f"Stderr: {e.stderr}")
+        logger.error(f"Stdout: {e.stdout}")
+        raise HTTPException(status_code=500, detail=f"Vectorization failed: {e.stderr or str(e)}")
     except Exception as e:
-        raise Exception(f"SVG conversion error: {str(e)}")
+        logger.error(f"General error in convert_png_to_svg: {e}")
+        raise HTTPException(status_code=500, detail=f"SVG conversion error: {str(e)}")
 
+@app.on_event("startup")
+async def startup_event():
+    """Check dependencies on startup"""
+    logger.info("Starting up PNG to SVG Converter API")
+    if not check_dependencies():
+        logger.error("Required dependencies not found!")
+        # Don't exit, but log the error
+    else:
+        logger.info("All dependencies found successfully")
 
 @app.get("/")
 async def root():
-    return {"message": "PNG to SVG Converter API", "version": "1.0.0"}
+    return {"message": "PNG to SVG Converter API", "version": "1.0.0", "status": "running"}
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    deps_ok = check_dependencies()
+    return {
+        "status": "healthy" if deps_ok else "unhealthy",
+        "dependencies": {
+            "imagemagick": "available" if deps_ok else "missing",
+            "potrace": "available" if deps_ok else "missing"
+        }
+    }
 
 @app.post("/convert")
 async def convert_image(file: UploadFile = File(...)):
@@ -126,6 +202,8 @@ async def convert_image(file: UploadFile = File(...)):
     Convert a PNG image to SVG and transparent PNG
     Returns both files as base64 encoded strings
     """
+    logger.info(f"Processing file: {file.filename}")
+    
     # Validate file type
     if not file.filename.lower().endswith('.png'):
         raise HTTPException(status_code=400, detail="File must be a PNG image")
@@ -133,9 +211,12 @@ async def convert_image(file: UploadFile = File(...)):
     try:
         # Read the uploaded file
         image_data = await file.read()
+        logger.info(f"Read {len(image_data)} bytes from uploaded file")
         
         # Check image size
         img = Image.open(io.BytesIO(image_data))
+        logger.info(f"Image size: {img.size}, mode: {img.mode}")
+        
         if not check_size(img):
             raise HTTPException(
                 status_code=400, 
@@ -152,6 +233,7 @@ async def convert_image(file: UploadFile = File(...)):
         svg_b64 = base64.b64encode(svg_data).decode('utf-8')
         transparent_b64 = base64.b64encode(transparent_data).decode('utf-8')
         
+        logger.info("Conversion completed successfully")
         return JSONResponse({
             "success": True,
             "original_filename": file.filename,
@@ -170,6 +252,7 @@ async def convert_image(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Unexpected error in convert_image: {e}")
         raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
 
 @app.post("/convert-batch")
@@ -247,4 +330,5 @@ async def convert_batch(files: list[UploadFile] = File(...)):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
