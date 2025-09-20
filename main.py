@@ -65,3 +65,44 @@ def convert_png_to_svg(png_data):
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
+            temp_in.flush()
+            temp_in_path = temp_in.name
+
+        temp_pbm = tempfile.mktemp(suffix=".pbm")
+        temp_out_path = tempfile.mktemp(suffix=".svg")
+        temp_scour_out_path = tempfile.mktemp(suffix=".svg")
+
+        # Convert PNG to PBM (bitmap format for Potrace)
+        subprocess.run(
+            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
+            check=True
+        )
+
+        # Run Potrace with tuned parameters
+        subprocess.run(
+            ["potrace", "-s", "-t", "10", "-a", "2", "-O", "1.5",
+             "-o", temp_out_path, temp_pbm],
+            check=True
+        )
+
+        # Run Scour to optimize/simplify SVG
+        subprocess.run(
+            ["scour", "-i", temp_out_path, "-o", temp_scour_out_path,
+             "--enable-viewboxing", "--enable-id-stripping",
+             "--enable-comment-stripping", "--shorten-ids"],
+            check=True
+        )
+
+        with open(temp_scour_out_path, "rb") as f:
+            svg_data = f.read()
+
+        # cleanup
+        for p in [temp_in_path, temp_pbm, temp_out_path, temp_scour_out_path]:
+            if os.path.exists(p):
+                os.remove(p)
+
+        return svg_data
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Vectorization failed: {e}")
+    except Exception as e:
+        raise Exception(f"SVG conversion error: {str(e)}")
