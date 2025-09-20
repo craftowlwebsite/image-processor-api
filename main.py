@@ -83,7 +83,7 @@ def convert_png_to_svg(png_data, threshold="50%", downsample="100%"):
         subprocess.run([
             "potrace", "-s",
             "--turdsize", "10",
-            "--alphamax", "2.0",
+            "--alphamax", "2.5",
             "--opttolerance", "0.8",
             "-o", temp_out_path,
             temp_pbm
