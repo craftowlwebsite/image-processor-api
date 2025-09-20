@@ -1,196 +1,249 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+import os
+import subprocess
 from PIL import Image
+import tempfile
+import zipfile
 import io
 import base64
-import requests
-import subprocess
-import tempfile
-import os
+from pathlib import Path
+import shutil
+import uvicorn
 
-app = Flask(__name__)
+app = FastAPI(title="PNG to SVG Converter API", version="1.0.0")
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Updated target size
 TARGET_SIZE = (4096, 4096)
 
-# Simple API key authentication
-API_KEY = os.environ.get('API_KEY')
-
-def authenticate():
-    """Check if request has valid API key"""
-    auth_header = request.headers.get('Authorization')
-    if not auth_header:
-        return False
-    try:
-        scheme, token = auth_header.split(' ', 1)
-        return scheme.lower() == 'bearer' and token == API_KEY
-    except:
-        return False
-
+def check_size(img):
+    """Check if image matches target size"""
+    return img.size == TARGET_SIZE
 
 def make_transparent(image_data):
     """Convert PNG to binary black and transparent"""
     try:
+        # Open the image from bytes
         img = Image.open(io.BytesIO(image_data))
         
+        # Convert the image to RGBA if it isn't already
         if img.mode != 'RGBA':
             img = img.convert('RGBA')
         
+        # Get the image data
         data = img.getdata()
+        
+        # Create a new list for the modified pixels
         new_data = []
         
+        # Process each pixel
         for item in data:
             r, g, b, a = item
+            
+            # Calculate brightness (weighted RGB values for human perception)
             brightness = (0.299 * r + 0.587 * g + 0.114 * b)
             
-            if brightness < 200 and a > 0:
+            # If pixel is dark enough (below threshold), make it pure black
+            # Otherwise, make it transparent
+            if brightness < 200 and a > 0:  # Added alpha check
                 new_data.append((0, 0, 0, 255))  # Pure black
             else:
                 new_data.append((255, 255, 255, 0))  # Transparent
         
+        # Create new image with the modified data
         new_img = Image.new('RGBA', img.size)
         new_img.putdata(new_data)
         
+        # Save to bytes
         output = io.BytesIO()
-        new_img.save(output, format='PNG', dpi=(300, 300))
+        new_img.save(output, format='PNG')
         output.seek(0)
         
         return output.getvalue()
-        
     except Exception as e:
-        raise Exception(f"Error creating transparent version: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating transparent version: {str(e)}")
 
-def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Inkscape's trace-bitmap"""
+def convert_png_to_svg(image_data):
+    """Convert PNG bytes to SVG using ImageMagick"""
     try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
-            temp_in.write(png_data)
-            temp_in.flush()
-            temp_in_path = temp_in.name
-
-        temp_out_path = tempfile.mktemp(suffix=".svg")
-
-        # Run Inkscape trace-bitmap (bitmap → SVG)
-        subprocess.run([
-            "inkscape",
-            temp_in_path,
-            "--export-plain-svg", temp_out_path,
-            "--trace-bitmap"
-        ], check=True)
-
-        with open(temp_out_path, "rb") as f:
-            svg_bytes = f.read()
-
-        for p in [temp_in_path, temp_out_path]:
-            if os.path.exists(p):
-                os.remove(p)
-
-        return svg_bytes
+        # Create temporary files
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_input:
+            temp_input.write(image_data)
+            temp_input_path = temp_input.name
+        
+        with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as temp_output:
+            temp_output_path = temp_output.name
+        
+        try:
+            # Use magick command
+            subprocess.run([
+                'magick',
+                temp_input_path,
+                '-background', 'none',
+                '-density', '300',
+                temp_output_path
+            ], check=True)
+            
+            # Read the SVG content
+            with open(temp_output_path, 'rb') as f:
+                svg_data = f.read()
+            
+            return svg_data
+        finally:
+            # Clean up temporary files
+            if os.path.exists(temp_input_path):
+                os.unlink(temp_input_path)
+            if os.path.exists(temp_output_path):
+                os.unlink(temp_output_path)
+    
     except subprocess.CalledProcessError as e:
-        raise Exception(f"Vectorization failed: {e}")
+        raise HTTPException(status_code=500, detail=f"ImageMagick conversion failed: {str(e)}")
     except Exception as e:
-        raise Exception(f"SVG conversion error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"SVG conversion error: {str(e)}")
 
+@app.get("/")
+async def root():
+    return {"message": "PNG to SVG Converter API", "version": "1.0.0"}
 
-@app.route('/transparent', methods=['POST'])
-def transparent_only():
-    """Endpoint for background removal - requires authentication"""
-    if not authenticate():
-        return jsonify({'error': 'Unauthorized'}), 401
-        
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+@app.post("/convert")
+async def convert_image(file: UploadFile = File(...)):
+    """
+    Convert a PNG image to SVG and transparent PNG
+    Returns both files as base64 encoded strings
+    """
+    # Validate file type
+    if not file.filename.lower().endswith('.png'):
+        raise HTTPException(status_code=400, detail="File must be a PNG image")
+    
     try:
-        data = request.json
+        # Read the uploaded file
+        image_data = await file.read()
         
-        if 'url' in data:
-            response = requests.get(data['url'])
-            image_data = response.content
-        elif 'base64' in data:
-            image_data = base64.b64decode(data['base64'])
-        else:
-            return jsonify({'error': 'No image provided'}), 400
+        # Check image size
+        img = Image.open(io.BytesIO(image_data))
+        if not check_size(img):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Image size {img.size} doesn't match required size {TARGET_SIZE}"
+            )
         
-        processed_data = make_transparent(image_data)
-        processed_base64 = base64.b64encode(processed_data).decode('utf-8')
-        
-        return jsonify({
-            'success': True,
-            'processed_image': processed_base64,
-            'size': len(processed_data)
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/svg', methods=['POST'])
-def svg_only():
-    """Endpoint for SVG conversion - requires authentication"""
-    if not authenticate():
-        return jsonify({'error': 'Unauthorized'}), 401
-        
-    try:
-        data = request.json
-        
-        if 'url' in data:
-            response = requests.get(data['url'])
-            image_data = response.content
-        elif 'base64' in data:
-            image_data = base64.b64decode(data['base64'])
-        else:
-            return jsonify({'error': 'No image provided'}), 400
-        
+        # Convert to SVG
         svg_data = convert_png_to_svg(image_data)
-        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
         
-        return jsonify({
-            'success': True,
-            'svg': svg_base64,
-            'size': len(svg_data)
+        # Create transparent version
+        transparent_data = make_transparent(image_data)
+        
+        # Encode as base64 for JSON response
+        svg_b64 = base64.b64encode(svg_data).decode('utf-8')
+        transparent_b64 = base64.b64encode(transparent_data).decode('utf-8')
+        
+        return JSONResponse({
+            "success": True,
+            "original_filename": file.filename,
+            "svg": {
+                "filename": f"{Path(file.filename).stem}.svg",
+                "data": svg_b64,
+                "size": len(svg_data)
+            },
+            "transparent_png": {
+                "filename": file.filename,
+                "data": transparent_b64,
+                "size": len(transparent_data)
+            }
         })
-        
+    
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
 
+@app.post("/convert-batch")
+async def convert_batch(files: list[UploadFile] = File(...)):
+    """
+    Convert multiple PNG images to SVG and transparent PNG
+    Returns a ZIP file containing all converted images
+    """
+    if len(files) > 10:  # Limit batch size
+        raise HTTPException(status_code=400, detail="Maximum 10 files per batch")
+    
+    results = []
+    errors = []
+    
+    # Create temporary directory for processing
+    with tempfile.TemporaryDirectory() as temp_dir:
+        svg_dir = os.path.join(temp_dir, "svg")
+        transparent_dir = os.path.join(temp_dir, "transparent")
+        os.makedirs(svg_dir)
+        os.makedirs(transparent_dir)
+        
+        for file in files:
+            if not file.filename.lower().endswith('.png'):
+                errors.append(f"{file.filename}: Not a PNG file")
+                continue
+            
+            try:
+                # Read the uploaded file
+                image_data = await file.read()
+                
+                # Check image size
+                img = Image.open(io.BytesIO(image_data))
+                if not check_size(img):
+                    errors.append(f"{file.filename}: Wrong size {img.size}, expected {TARGET_SIZE}")
+                    continue
+                
+                # Convert to SVG
+                svg_data = convert_png_to_svg(image_data)
+                svg_path = os.path.join(svg_dir, f"{Path(file.filename).stem}.svg")
+                with open(svg_path, 'wb') as f:
+                    f.write(svg_data)
+                
+                # Create transparent version
+                transparent_data = make_transparent(image_data)
+                transparent_path = os.path.join(transparent_dir, file.filename)
+                with open(transparent_path, 'wb') as f:
+                    f.write(transparent_data)
+                
+                results.append(file.filename)
+            
+            except Exception as e:
+                errors.append(f"{file.filename}: {str(e)}")
+        
+        if not results:
+            raise HTTPException(status_code=400, detail=f"No files processed successfully. Errors: {errors}")
+        
+        # Create ZIP file
+        zip_path = os.path.join(temp_dir, "converted_images.zip")
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            # Add SVG files
+            for svg_file in os.listdir(svg_dir):
+                zipf.write(os.path.join(svg_dir, svg_file), f"svg/{svg_file}")
+            
+            # Add transparent PNG files
+            for png_file in os.listdir(transparent_dir):
+                zipf.write(os.path.join(transparent_dir, png_file), f"transparent/{png_file}")
+        
+        # Return the ZIP file
+        return FileResponse(
+            zip_path,
+            media_type="application/zip",
+            filename="converted_images.zip",
+            headers={"X-Processed-Files": str(len(results)), "X-Errors": str(len(errors))}
+        )
 
-@app.route('/process-both', methods=['POST'])
-def process_both():
-    """Endpoint that returns both transparent PNG and SVG"""
-    if not authenticate():
-        return jsonify({'error': 'Unauthorized'}), 401
-        
-    try:
-        data = request.json
-        
-        if 'url' in data:
-            response = requests.get(data['url'])
-            image_data = response.content
-        elif 'base64' in data:
-            image_data = base64.b64decode(data['base64'])
-        else:
-            return jsonify({'error': 'No image provided'}), 400
-        
-        # Process for transparent background
-        processed_png_data = make_transparent(image_data)
-        processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
-        
-        # Convert processed image to SVG
-        svg_data = convert_png_to_svg(processed_png_data)
-        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
-        
-        return jsonify({
-            'success': True,
-            'transparent_png': processed_png_base64,
-            'svg': svg_base64,
-            'png_size': len(processed_png_data),
-            'svg_size': len(svg_data)
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
