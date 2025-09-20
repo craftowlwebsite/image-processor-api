@@ -1,18 +1,15 @@
-FROM python:3.11-slim
+FROM python:3.11
 
-# Install system dependencies including ImageMagick
+# Install ImageMagick + Potrace
 RUN apt-get update && apt-get install -y \
     imagemagick \
-    libmagic1 \
+    potrace \
     && rm -rf /var/lib/apt/lists/*
-
-# Configure ImageMagick policy to allow PDF/PNG conversions
-RUN sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -20,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8080
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "main.py"]
