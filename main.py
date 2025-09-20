@@ -61,7 +61,7 @@ def make_transparent(image_data):
 
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Potrace + Scour optimization"""
+    """Convert PNG bytes to vectorized SVG using Potrace + Scour via subprocess"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -71,6 +71,7 @@ def convert_png_to_svg(png_data):
 
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
+        temp_scour_out_path = tempfile.mktemp(suffix=".svg")
 
         # Convert PNG to PBM (bitmap format for Potrace)
         subprocess.run(
@@ -85,26 +86,19 @@ def convert_png_to_svg(png_data):
             check=True
         )
 
-        # Read Potrace SVG as text
-        with open(temp_out_path, "r", encoding="utf-8") as f:
-            svg_text = f.read()   # type: str
+        # Run Scour via Python module (always available)
+        subprocess.run(
+            ["python", "-m", "scour", "-i", temp_out_path, "-o", temp_scour_out_path,
+             "--enable-viewboxing", "--enable-id-stripping",
+             "--enable-comment-stripping", "--shorten-ids"],
+            check=True
+        )
 
-        # Configure Scour options
-        options = scour.sanitizeOptions(options=None)
-        options.enable_viewboxing = True
-        options.enable_id_stripping = True
-        options.enable_comment_stripping = True
-        options.shorten_ids = True
-
-        # Run Scour in-memory (text in, text out)
-        in_io = io.StringIO(svg_text)
-        out_io = io.StringIO()
-        scour.start(options, in_io, out_io)
-        svg_str = out_io.getvalue()      # str
-        svg_bytes = svg_str.encode("utf-8")  # final bytes for API response
+        with open(temp_scour_out_path, "rb") as f:
+            svg_bytes = f.read()
 
         # cleanup
-        for p in [temp_in_path, temp_pbm, temp_out_path]:
+        for p in [temp_in_path, temp_pbm, temp_out_path, temp_scour_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
@@ -113,6 +107,7 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 
 
