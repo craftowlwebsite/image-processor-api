@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.11-bullseye
 
 # Install ImageMagick + Potrace + Autotrace
 RUN apt-get update && apt-get install -y \
