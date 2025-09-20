@@ -1,10 +1,10 @@
-FROM python:3.11-bullseye
+FROM python:3.11-slim
 
-# Install ImageMagick + Potrace + Autotrace
+# Install ImageMagick + Potrace + Inkscape
 RUN apt-get update && apt-get install -y \
     imagemagick \
     potrace \
-    autotrace \
+    inkscape \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
