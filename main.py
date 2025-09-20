@@ -58,8 +58,9 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
-def convert_png_to_svg(png_data):
-    """Convert PNG bytes to smoother vectorized SVG using Potrace with adaptive thresholding"""
+
+def convert_png_to_svg(png_data, threshold="50%"):
+    """Convert PNG bytes to vectorized SVG using Potrace with adjustable threshold"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -70,24 +71,21 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Preprocess: grayscale, slight blur, adaptive threshold (Otsu)
-        subprocess.run([
-            "magick", temp_in_path,
-            "-colorspace", "Gray",
-            "-blur", "0x0.5",
-            "-auto-threshold", "OTSU",
-            temp_pbm
-        ], check=True)
+        # Convert PNG to PBM with custom threshold
+        subprocess.run(
+            ["magick", temp_in_path, "-threshold", threshold, temp_pbm],
+            check=True
+        )
 
-        # Run Potrace with smoothing options
-        subprocess.run([
-            "potrace", "-s",
-            "--turdsize", "10",
-            "--alphamax", "1.5",
-            "--opttolerance", "0.5",
-            "-o", temp_out_path,
-            temp_pbm
-        ], check=True)
+        # Run Potrace to vectorize PBM → SVG
+        subprocess.run(
+            ["potrace", "-s",
+             "--turdsize", "10",
+             "--alphamax", "1.5",
+             "--opttolerance", "0.5",
+             "-o", temp_out_path, temp_pbm],
+            check=True
+        )
 
         with open(temp_out_path, "rb") as f:
             svg_data = f.read()
@@ -150,8 +148,10 @@ def svg_only():
             image_data = base64.b64decode(data['base64'])
         else:
             return jsonify({'error': 'No image provided'}), 400
-        
-        svg_data = convert_png_to_svg(image_data)
+
+        threshold = data.get('threshold', "50%")  # default 50%
+
+        svg_data = convert_png_to_svg(image_data, threshold)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
         
         return jsonify({
@@ -180,13 +180,15 @@ def process_both():
             image_data = base64.b64decode(data['base64'])
         else:
             return jsonify({'error': 'No image provided'}), 400
+
+        threshold = data.get('threshold', "50%")  # default 50%
         
         # Process for transparent background
         processed_png_data = make_transparent(image_data)
         processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
         
         # Convert processed image to SVG
-        svg_data = convert_png_to_svg(processed_png_data)
+        svg_data = convert_png_to_svg(processed_png_data, threshold)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
         
         return jsonify({
