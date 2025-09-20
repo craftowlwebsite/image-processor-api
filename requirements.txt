@@ -1,5 +1,5 @@
-Flask==2.3.3
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
 Pillow==10.0.1
-requests==2.31.0
-gunicorn==21.2.0
-scour
+python-magic==0.4.27
