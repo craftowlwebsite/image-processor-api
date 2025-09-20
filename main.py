@@ -60,8 +60,8 @@ def make_transparent(image_data):
 
 
 def convert_png_to_svg(png_data,
-                       alphamax="3.0",
-                       opttolerance="2.0",
+                       alphamax="3.5",
+                       opttolerance="3.0",
                        turdsize="150",
                        dither="ordered"):
     """
