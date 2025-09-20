@@ -6,6 +6,7 @@ import requests
 import subprocess
 import tempfile
 import os
+from scour import scour  # use Scour Python API
 
 app = Flask(__name__)
 
@@ -70,7 +71,6 @@ def convert_png_to_svg(png_data):
 
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
-        temp_scour_out_path = tempfile.mktemp(suffix=".svg")
 
         # Convert PNG to PBM (bitmap format for Potrace)
         subprocess.run(
@@ -85,24 +85,133 @@ def convert_png_to_svg(png_data):
             check=True
         )
 
-        # Run Scour to optimize/simplify SVG
-        subprocess.run(
-            ["scour", "-i", temp_out_path, "-o", temp_scour_out_path,
-             "--enable-viewboxing", "--enable-id-stripping",
-             "--enable-comment-stripping", "--shorten-ids"],
-            check=True
-        )
+        # Use Scour Python API for optimization
+        with open(temp_out_path, "r", encoding="utf-8") as f:
+            svg_text = f.read()
 
-        with open(temp_scour_out_path, "rb") as f:
-            svg_data = f.read()
+        options = scour.sanitizeOptions(options=None)
+        options.enable_viewboxing = True
+        options.enable_id_stripping = True
+        options.enable_comment_stripping = True
+        options.shorten_ids = True
+
+        out_io = io.StringIO()
+        scour.start(options=options, infile=io.StringIO(svg_text), outfile=out_io)
+        svg_bytes = out_io.getvalue().encode("utf-8")
 
         # cleanup
-        for p in [temp_in_path, temp_pbm, temp_out_path, temp_scour_out_path]:
+        for p in [temp_in_path, temp_pbm, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
-        return svg_data
+        return svg_bytes
     except subprocess.CalledProcessError as e:
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
+
+@app.route('/transparent', methods=['POST'])
+def transparent_only():
+    """Endpoint for background removal - requires authentication"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        data = request.json
+        
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        processed_data = make_transparent(image_data)
+        processed_base64 = base64.b64encode(processed_data).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'processed_image': processed_base64,
+            'size': len(processed_data)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/svg', methods=['POST'])
+def svg_only():
+    """Endpoint for SVG conversion - requires authentication"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        data = request.json
+        
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        svg_data = convert_png_to_svg(image_data)
+        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'svg': svg_base64,
+            'size': len(svg_data)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/process-both', methods=['POST'])
+def process_both():
+    """Endpoint that returns both transparent PNG and SVG"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        data = request.json
+        
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        # Process for transparent background
+        processed_png_data = make_transparent(image_data)
+        processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
+        
+        # Convert processed image to SVG
+        svg_data = convert_png_to_svg(processed_png_data)
+        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'transparent_png': processed_png_base64,
+            'svg': svg_base64,
+            'png_size': len(processed_png_data),
+            'svg_size': len(svg_data)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
