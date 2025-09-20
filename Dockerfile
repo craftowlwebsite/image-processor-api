@@ -1,9 +1,10 @@
 FROM python:3.11
 
-# Install ImageMagick + Potrace
+# Install ImageMagick + Potrace + Autotrace
 RUN apt-get update && apt-get install -y \
     imagemagick \
     potrace \
+    autotrace \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
