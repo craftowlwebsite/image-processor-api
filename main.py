@@ -59,36 +59,40 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG letting Potrace handle thresholding"""
+    """Convert PNG bytes to vectorized SVG using Canny edge detection + Potrace"""
     try:
+        # Save temp PNG
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
             temp_in.flush()
             temp_in_path = temp_in.name
 
-        temp_pbm = tempfile.mktemp(suffix=".pbm")
+        temp_edges = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG to PBM without hard threshold
-        subprocess.run(
-            ["magick", temp_in_path, "-colorspace", "gray", temp_pbm],
-            check=True
-        )
-
-        # Potrace with internal threshold (blacklevel)
+        # Step 1: Preprocess with Canny edge detection
         subprocess.run([
-            "potrace", "-s",
-            "--blacklevel", "0.6",  # tweakable: 0.5 is mid gray
-            "-O", "0.5",            # moderate smoothness
-            "-t", "4",              # corner threshold
-            "-a", "1",              # area threshold
-            "-o", temp_out_path, temp_pbm
+            "magick", temp_in_path,
+            "-colorspace", "gray",
+            "-canny", "0x1+10%+30%",
+            temp_edges
         ], check=True)
 
+        # Step 2: Run Potrace on the edge-detected PBM
+        subprocess.run([
+            "potrace", "-s",
+            "-O", "0.5",    # smoothing
+            "-t", "4",      # corner threshold
+            "-a", "1",      # ignore tiny specks
+            "-o", temp_out_path, temp_edges
+        ], check=True)
+
+        # Step 3: Read back SVG
         with open(temp_out_path, "rb") as f:
             svg_bytes = f.read()
 
-        for p in [temp_in_path, temp_pbm, temp_out_path]:
+        # Cleanup
+        for p in [temp_in_path, temp_edges, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
@@ -97,6 +101,7 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
