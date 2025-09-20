@@ -58,8 +58,9 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
+
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Canny edge detection + Potrace"""
+    """Convert PNG bytes to vectorized SVG using adaptive threshold + Potrace"""
     try:
         # Save temp PNG
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -70,18 +71,18 @@ def convert_png_to_svg(png_data):
         temp_edges = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Step 1: Preprocess with Canny edge detection
+        # Step 1: Preprocess with adaptive threshold (more robust than Canny)
         subprocess.run([
             "magick", temp_in_path,
             "-colorspace", "gray",
-            "-canny", "0x1+10%+30%",
-            temp_edges
+            "-adaptive-threshold", "15x15+10%",
+            "PBM:"+temp_edges
         ], check=True)
 
-        # Step 2: Run Potrace on the edge-detected PBM
+        # Step 2: Run Potrace on the binarized PBM
         subprocess.run([
             "potrace", "-s",
-            "-O", "0.5",    # smoothing
+            "-O", "0.5",    # moderate smoothing
             "-t", "4",      # corner threshold
             "-a", "1",      # ignore tiny specks
             "-o", temp_out_path, temp_edges
