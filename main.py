@@ -60,7 +60,7 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Potrace + Scour via subprocess"""
+    """Convert PNG bytes to vectorized SVG using Potrace only (optimized for smooth curves)"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -70,32 +70,25 @@ def convert_png_to_svg(png_data):
 
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
-        temp_scour_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG to PBM (bitmap format for Potrace)
+        # Preprocess PNG → PBM (optional: add blur/despeckle if needed)
         subprocess.run(
             ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
             check=True
         )
 
-        # Run Potrace with tuned parameters
+        # Run Potrace with smoothing options
         subprocess.run(
-            ["potrace", "-s", "-t", "10", "-a", "2", "-O", "1.5",
+            ["potrace", "-s", "-t", "10", "-a", "2", "-O", "2.0", "--longcurve",
              "-o", temp_out_path, temp_pbm],
             check=True
         )
 
-        # Run Scour with minimal args (works across versions)
-        subprocess.run(
-            ["python", "-m", "scour", "-i", temp_out_path, "-o", temp_scour_out_path],
-            check=True
-        )
-
-        with open(temp_scour_out_path, "rb") as f:
+        with open(temp_out_path, "rb") as f:
             svg_bytes = f.read()
 
         # cleanup
-        for p in [temp_in_path, temp_pbm, temp_out_path, temp_scour_out_path]:
+        for p in [temp_in_path, temp_pbm, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
@@ -104,6 +97,7 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 
 @app.route('/transparent', methods=['POST'])
