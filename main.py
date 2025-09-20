@@ -60,7 +60,7 @@ def make_transparent(image_data):
 
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Potrace with smoothing"""
+    """Convert PNG bytes to vectorized SVG using Potrace with stronger smoothing"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -77,9 +77,9 @@ def convert_png_to_svg(png_data):
             check=True
         )
 
-        # Run Potrace with smoothing parameters
+        # Run Potrace with tuned parameters for smoother output
         subprocess.run(
-            ["potrace", "-s", "-t", "10", "-a", "1.5", "-O", "0.4",
+            ["potrace", "-s", "-t", "10", "-a", "2", "-O", "1.5",
              "-o", temp_out_path, temp_pbm],
             check=True
         )
