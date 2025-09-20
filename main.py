@@ -60,7 +60,7 @@ def make_transparent(image_data):
 
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using adaptive threshold + Potrace"""
+    """Convert PNG bytes to vectorized SVG using simple threshold + Potrace"""
     try:
         # Save temp PNG
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -68,24 +68,24 @@ def convert_png_to_svg(png_data):
             temp_in.flush()
             temp_in_path = temp_in.name
 
-        temp_edges = tempfile.mktemp(suffix=".pbm")
+        temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Step 1: Preprocess with adaptive threshold (more robust than Canny)
+        # Step 1: Simple grayscale + fixed threshold
         subprocess.run([
             "magick", temp_in_path,
             "-colorspace", "gray",
-            "-adaptive-threshold", "15x15+10%",
-            "PBM:"+temp_edges
+            "-threshold", "60%",        # tweakable: lower = more detail, higher = fewer blobs
+            "PBM:"+temp_pbm
         ], check=True)
 
-        # Step 2: Run Potrace on the binarized PBM
+        # Step 2: Run Potrace
         subprocess.run([
             "potrace", "-s",
-            "-O", "0.5",    # moderate smoothing
-            "-t", "4",      # corner threshold
-            "-a", "1",      # ignore tiny specks
-            "-o", temp_out_path, temp_edges
+            "-O", "0.5",                # smoothing
+            "-t", "4",                  # corner threshold
+            "-a", "1",                  # area filter
+            "-o", temp_out_path, temp_pbm
         ], check=True)
 
         # Step 3: Read back SVG
@@ -93,7 +93,7 @@ def convert_png_to_svg(png_data):
             svg_bytes = f.read()
 
         # Cleanup
-        for p in [temp_in_path, temp_edges, temp_out_path]:
+        for p in [temp_in_path, temp_pbm, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
