@@ -85,21 +85,23 @@ def convert_png_to_svg(png_data):
             check=True
         )
 
-        # Optimize with Scour (Python API)
+        # Read Potrace SVG as text
         with open(temp_out_path, "r", encoding="utf-8") as f:
-            svg_text = f.read()   # text string
+            svg_text = f.read()   # type: str
 
+        # Configure Scour options
         options = scour.sanitizeOptions(options=None)
         options.enable_viewboxing = True
         options.enable_id_stripping = True
         options.enable_comment_stripping = True
         options.shorten_ids = True
 
+        # Run Scour in-memory (text in, text out)
         in_io = io.StringIO(svg_text)
         out_io = io.StringIO()
         scour.start(options, in_io, out_io)
-        svg_str = out_io.getvalue()
-        svg_bytes = svg_str.encode("utf-8")
+        svg_str = out_io.getvalue()      # str
+        svg_bytes = svg_str.encode("utf-8")  # final bytes for API response
 
         # cleanup
         for p in [temp_in_path, temp_pbm, temp_out_path]:
@@ -111,6 +113,7 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 
 @app.route('/transparent', methods=['POST'])
