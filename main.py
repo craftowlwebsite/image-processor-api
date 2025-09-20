@@ -62,7 +62,7 @@ def make_transparent(image_data):
 def convert_png_to_svg(png_data,
                        alphamax="3.5",
                        opttolerance="3.0",
-                       turdsize="150",
+                       turdsize="200",
                        dither="ordered"):
     """
     Convert PNG bytes to vectorized SVG using Potrace.
