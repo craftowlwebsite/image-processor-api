@@ -87,7 +87,7 @@ def convert_png_to_svg(png_data):
 
         # Optimize with Scour (Python API)
         with open(temp_out_path, "r", encoding="utf-8") as f:
-            svg_text = f.read()
+            svg_text = f.read()   # text string
 
         options = scour.sanitizeOptions(options=None)
         options.enable_viewboxing = True
@@ -95,9 +95,11 @@ def convert_png_to_svg(png_data):
         options.enable_comment_stripping = True
         options.shorten_ids = True
 
+        in_io = io.StringIO(svg_text)
         out_io = io.StringIO()
-        scour.start(options, io.StringIO(svg_text), out_io)
-        svg_bytes = out_io.getvalue().encode("utf-8")
+        scour.start(options, in_io, out_io)
+        svg_str = out_io.getvalue()
+        svg_bytes = svg_str.encode("utf-8")
 
         # cleanup
         for p in [temp_in_path, temp_pbm, temp_out_path]:
