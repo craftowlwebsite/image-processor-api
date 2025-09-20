@@ -60,13 +60,14 @@ def make_transparent(image_data):
 
 
 def convert_png_to_svg(png_data,
-                       alphamax="2.0",
-                       opttolerance="1.0",
-                       turdsize="50",
+                       alphamax="3.0",
+                       opttolerance="2.0",
+                       turdsize="150",
                        dither="ordered"):
     """
     Convert PNG bytes to vectorized SVG using Potrace.
     Supports Floyd–Steinberg dithering or ordered dithering.
+    Defaults tuned for smoother curves.
     """
     try:
         # Save temp PNG first
@@ -169,9 +170,9 @@ def svg_only():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        alphamax = data.get('alphamax', "2.0")
-        opttolerance = data.get('opttolerance', "1.0")
-        turdsize = data.get('turdsize', "50")
+        alphamax = data.get('alphamax', "3.0")
+        opttolerance = data.get('opttolerance', "2.0")
+        turdsize = data.get('turdsize', "150")
         dither = data.get('dither', "ordered")
 
         svg_data = convert_png_to_svg(image_data, alphamax, opttolerance, turdsize, dither)
@@ -204,9 +205,9 @@ def process_both():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        alphamax = data.get('alphamax', "2.0")
-        opttolerance = data.get('opttolerance', "1.0")
-        turdsize = data.get('turdsize', "50")
+        alphamax = data.get('alphamax', "3.0")
+        opttolerance = data.get('opttolerance', "2.0")
+        turdsize = data.get('turdsize', "150")
         dither = data.get('dither', "ordered")
         
         # Process for transparent background
