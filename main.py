@@ -85,7 +85,7 @@ def convert_png_to_svg(png_data):
             check=True
         )
 
-        # Use Scour Python API for optimization
+        # Optimize with Scour (Python API)
         with open(temp_out_path, "r", encoding="utf-8") as f:
             svg_text = f.read()
 
@@ -96,7 +96,7 @@ def convert_png_to_svg(png_data):
         options.shorten_ids = True
 
         out_io = io.StringIO()
-        scour.start(options=options, infile=io.StringIO(svg_text), outfile=out_io)
+        scour.start(options, io.StringIO(svg_text), out_io)
         svg_bytes = out_io.getvalue().encode("utf-8")
 
         # cleanup
