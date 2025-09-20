@@ -6,7 +6,6 @@ import requests
 import subprocess
 import tempfile
 import os
-from scour import scour  # use Scour Python API
 
 app = Flask(__name__)
 
@@ -59,8 +58,9 @@ def make_transparent(image_data):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
+
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Potrace only (optimized for smooth curves)"""
+    """Convert PNG bytes to vectorized SVG using Potrace (balanced settings)"""
     try:
         # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -71,15 +71,15 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Preprocess PNG → PBM (optional: add blur/despeckle if needed)
+        # Preprocess PNG → PBM with slight blur for smoother edges
         subprocess.run(
-            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
+            ["magick", temp_in_path, "-blur", "0x0.5", "-threshold", "50%", temp_pbm],
             check=True
         )
 
-        # Run Potrace with smoothing options
+        # Run Potrace with balanced parameters
         subprocess.run(
-            ["potrace", "-s", "-t", "10", "-a", "2", "-O", "2.0", "--longcurve",
+            ["potrace", "-s", "-t", "8", "-a", "1", "-O", "1.0",
              "-o", temp_out_path, temp_pbm],
             check=True
         )
@@ -97,7 +97,6 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
-
 
 
 @app.route('/transparent', methods=['POST'])
