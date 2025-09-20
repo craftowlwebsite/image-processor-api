@@ -60,7 +60,7 @@ def make_transparent(image_data):
 
 
 def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using simple threshold + Potrace"""
+    """Convert PNG bytes to vectorized SVG using Autotrace"""
     try:
         # Save temp PNG
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -68,24 +68,25 @@ def convert_png_to_svg(png_data):
             temp_in.flush()
             temp_in_path = temp_in.name
 
-        temp_pbm = tempfile.mktemp(suffix=".pbm")
+        temp_pnm = tempfile.mktemp(suffix=".pnm")   # Autotrace prefers PNM/PPM input
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Step 1: Simple grayscale + fixed threshold
+        # Step 1: Convert PNG → PNM
         subprocess.run([
             "magick", temp_in_path,
             "-colorspace", "gray",
-            "-threshold", "60%",        # tweakable: lower = more detail, higher = fewer blobs
-            "PBM:"+temp_pbm
+            temp_pnm
         ], check=True)
 
-        # Step 2: Run Potrace
+        # Step 2: Run Autotrace
         subprocess.run([
-            "potrace", "-s",
-            "-O", "0.5",                # smoothing
-            "-t", "4",                  # corner threshold
-            "-a", "1",                  # area filter
-            "-o", temp_out_path, temp_pbm
+            "autotrace", temp_pnm,
+            "--output-file", temp_out_path,
+            "--output-format", "svg",
+            "--color-count", "2",       # monochrome (adjustable)
+            "--despeckle-level", "2",   # remove small noise
+            "--filter-iterations", "3", # smooth curves
+            "--corner-threshold", "100" # fewer jagged corners
         ], check=True)
 
         # Step 3: Read back SVG
@@ -93,7 +94,7 @@ def convert_png_to_svg(png_data):
             svg_bytes = f.read()
 
         # Cleanup
-        for p in [temp_in_path, temp_pbm, temp_out_path]:
+        for p in [temp_in_path, temp_pnm, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
@@ -102,6 +103,7 @@ def convert_png_to_svg(png_data):
         raise Exception(f"Vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
+
 
 
 @app.route('/transparent', methods=['POST'])
