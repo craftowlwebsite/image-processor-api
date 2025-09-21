@@ -293,3 +293,12 @@ def health():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
+@app.route('/inkscape-version', methods=['GET'])
+def inkscape_version():
+    try:
+        result = subprocess.check_output(["inkscape", "--version"], stderr=subprocess.STDOUT)
+        return jsonify({"version": result.decode().strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
