@@ -59,18 +59,16 @@ def make_transparent(image_data):
         raise Exception(f"Error creating transparent version: {str(e)}")
 
 
-def convert_png_to_svg(png_data,
-                       alphamax="3.5",
-                       opttolerance="3.0",
-                       turdsize="250",
-                       dither="ordered"):
+def convert_png_to_svg_potrace(png_data,
+                               alphamax="3.5",
+                               opttolerance="3.0",
+                               turdsize="250",
+                               dither="ordered"):
     """
     Convert PNG bytes to vectorized SVG using Potrace.
     Supports Floyd–Steinberg dithering or ordered dithering.
-    Defaults tuned for smoother curves.
     """
     try:
-        # Save temp PNG first
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
             temp_in.flush()
@@ -79,7 +77,6 @@ def convert_png_to_svg(png_data,
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Preprocess depending on chosen dithering method
         if dither.lower() == "floyd":
             magick_cmd = [
                 "magick", temp_in_path,
@@ -88,7 +85,7 @@ def convert_png_to_svg(png_data,
                 "-remap", "pattern:gray50",
                 temp_pbm
             ]
-        else:  # default: ordered dithering
+        else:
             magick_cmd = [
                 "magick", temp_in_path,
                 "-colorspace", "Gray",
@@ -98,7 +95,6 @@ def convert_png_to_svg(png_data,
 
         subprocess.run(magick_cmd, check=True)
 
-        # Run Potrace with smoothing options
         subprocess.run([
             "potrace", "-s",
             "--turdsize", str(turdsize),
@@ -111,27 +107,56 @@ def convert_png_to_svg(png_data,
         with open(temp_out_path, "rb") as f:
             svg_data = f.read()
 
-        # cleanup
         for p in [temp_in_path, temp_pbm, temp_out_path]:
             if os.path.exists(p):
                 os.remove(p)
 
         return svg_data
     except subprocess.CalledProcessError as e:
-        raise Exception(f"Vectorization failed: {e}")
+        raise Exception(f"Potrace vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"SVG conversion error: {str(e)}")
 
 
+def convert_png_to_svg_inkscape(png_data):
+    """
+    Convert PNG to SVG using Inkscape's headless tracer.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
+            temp_in.write(png_data)
+            temp_in.flush()
+            temp_in_path = temp_in.name
+
+        temp_out_path = tempfile.mktemp(suffix=".svg")
+
+        # Inkscape trace bitmap (brightness cutoff, smooth corners, optimize)
+        subprocess.run([
+            "inkscape", temp_in_path,
+            "--export-plain-svg", temp_out_path,
+            "--actions=EditSelectAll;TraceBitmap;FileSave;FileClose"
+        ], check=True)
+
+        with open(temp_out_path, "rb") as f:
+            svg_data = f.read()
+
+        for p in [temp_in_path, temp_out_path]:
+            if os.path.exists(p):
+                os.remove(p)
+
+        return svg_data
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Inkscape vectorization failed: {e}")
+    except Exception as e:
+        raise Exception(f"Inkscape conversion error: {str(e)}")
+
+
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
-    """Endpoint for background removal - requires authentication"""
     if not authenticate():
         return jsonify({'error': 'Unauthorized'}), 401
-        
     try:
         data = request.json
-        
         if 'url' in data:
             response = requests.get(data['url'])
             image_data = response.content
@@ -139,29 +164,25 @@ def transparent_only():
             image_data = base64.b64decode(data['base64'])
         else:
             return jsonify({'error': 'No image provided'}), 400
-        
+
         processed_data = make_transparent(image_data)
         processed_base64 = base64.b64encode(processed_data).decode('utf-8')
-        
+
         return jsonify({
             'success': True,
             'processed_image': processed_base64,
             'size': len(processed_data)
         })
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/svg', methods=['POST'])
 def svg_only():
-    """Endpoint for SVG conversion - requires authentication"""
     if not authenticate():
         return jsonify({'error': 'Unauthorized'}), 401
-        
     try:
         data = request.json
-        
         if 'url' in data:
             response = requests.get(data['url'])
             image_data = response.content
@@ -170,33 +191,57 @@ def svg_only():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        alphamax = data.get('alphamax', "3.0")
-        opttolerance = data.get('opttolerance', "2.0")
-        turdsize = data.get('turdsize', "150")
+        alphamax = data.get('alphamax', "3.5")
+        opttolerance = data.get('opttolerance', "3.0")
+        turdsize = data.get('turdsize', "250")
         dither = data.get('dither', "ordered")
 
-        svg_data = convert_png_to_svg(image_data, alphamax, opttolerance, turdsize, dither)
+        svg_data = convert_png_to_svg_potrace(image_data, alphamax, opttolerance, turdsize, dither)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
-        
+
         return jsonify({
             'success': True,
+            'engine': 'potrace',
             'svg': svg_base64,
             'size': len(svg_data)
         })
-        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/svg-inkscape', methods=['POST'])
+def svg_inkscape():
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        data = request.json
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+
+        svg_data = convert_png_to_svg_inkscape(image_data)
+        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
+
+        return jsonify({
+            'success': True,
+            'engine': 'inkscape',
+            'svg': svg_base64,
+            'size': len(svg_data)
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/process-both', methods=['POST'])
 def process_both():
-    """Endpoint that returns both transparent PNG and SVG"""
     if not authenticate():
         return jsonify({'error': 'Unauthorized'}), 401
-        
     try:
         data = request.json
-        
         if 'url' in data:
             response = requests.get(data['url'])
             image_data = response.content
@@ -205,19 +250,17 @@ def process_both():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        alphamax = data.get('alphamax', "3.0")
-        opttolerance = data.get('opttolerance', "2.0")
-        turdsize = data.get('turdsize', "150")
+        alphamax = data.get('alphamax', "3.5")
+        opttolerance = data.get('opttolerance', "3.0")
+        turdsize = data.get('turdsize', "250")
         dither = data.get('dither', "ordered")
-        
-        # Process for transparent background
+
         processed_png_data = make_transparent(image_data)
         processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
-        
-        # Convert original image to SVG
-        svg_data = convert_png_to_svg(image_data, alphamax, opttolerance, turdsize, dither)
+
+        svg_data = convert_png_to_svg_potrace(image_data, alphamax, opttolerance, turdsize, dither)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
-        
+
         return jsonify({
             'success': True,
             'transparent_png': processed_png_base64,
@@ -225,7 +268,6 @@ def process_both():
             'png_size': len(processed_png_data),
             'svg_size': len(svg_data)
         })
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
