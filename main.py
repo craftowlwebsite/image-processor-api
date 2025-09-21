@@ -301,4 +301,3 @@ def inkscape_version():
         return jsonify({"version": result.decode().strip()})
     except Exception as e:
         return jsonify({"error": str(e)})
-
