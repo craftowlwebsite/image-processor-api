@@ -290,10 +290,6 @@ def process_both():
 def health():
     return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
 
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
 @app.route('/inkscape-version', methods=['GET'])
 def inkscape_version():
     try:
@@ -301,3 +297,6 @@ def inkscape_version():
         return jsonify({"version": result.decode().strip()})
     except Exception as e:
         return jsonify({"error": str(e)})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
