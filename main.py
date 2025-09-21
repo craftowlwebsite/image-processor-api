@@ -118,9 +118,14 @@ def convert_png_to_svg_potrace(png_data,
         raise Exception(f"SVG conversion error: {str(e)}")
 
 
-def convert_png_to_svg_inkscape(png_data):
+def convert_png_to_svg_inkscape(png_data,
+                                threshold="0.55",
+                                smooth_corners=True,
+                                optimize=True,
+                                suppress_speckles="50"):
     """
-    Convert PNG to SVG using Inkscape's headless tracer.
+    Convert PNG to SVG using Inkscape's headless tracer with tunable options.
+    Defaults tuned for smoother, cleaner outlines.
     """
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -130,12 +135,22 @@ def convert_png_to_svg_inkscape(png_data):
 
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Inkscape trace bitmap (brightness cutoff, smooth corners, optimize)
-        subprocess.run([
+        # Build command
+        cmd = [
             "inkscape", temp_in_path,
             "--export-plain-svg", temp_out_path,
-            "--actions=EditSelectAll;TraceBitmap;FileSave;FileClose"
-        ], check=True)
+            "--trace-bitmap-mode=brightness",
+            f"--trace-bitmap-threshold={threshold}"
+        ]
+
+        if smooth_corners:
+            cmd.append("--trace-bitmap-smooth-corners")
+        if optimize:
+            cmd.append("--trace-bitmap-optimize")
+        if suppress_speckles:
+            cmd.append(f"--trace-bitmap-suppress-speckles={suppress_speckles}")
+
+        subprocess.run(cmd, check=True)
 
         with open(temp_out_path, "rb") as f:
             svg_data = f.read()
@@ -149,7 +164,6 @@ def convert_png_to_svg_inkscape(png_data):
         raise Exception(f"Inkscape vectorization failed: {e}")
     except Exception as e:
         raise Exception(f"Inkscape conversion error: {str(e)}")
-
 
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
