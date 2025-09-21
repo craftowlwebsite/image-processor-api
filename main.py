@@ -165,6 +165,7 @@ def convert_png_to_svg_inkscape(png_data,
     except Exception as e:
         raise Exception(f"Inkscape conversion error: {str(e)}")
 
+
 @app.route('/transparent', methods=['POST'])
 def transparent_only():
     if not authenticate():
@@ -237,14 +238,31 @@ def svg_inkscape():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        svg_data = convert_png_to_svg_inkscape(image_data)
+        threshold = data.get('threshold', "0.55")
+        smooth_corners = data.get('smooth_corners', True)
+        optimize = data.get('optimize', True)
+        suppress_speckles = data.get('suppress_speckles', "50")
+
+        svg_data = convert_png_to_svg_inkscape(
+            image_data,
+            threshold=threshold,
+            smooth_corners=smooth_corners,
+            optimize=optimize,
+            suppress_speckles=suppress_speckles
+        )
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
 
         return jsonify({
             'success': True,
             'engine': 'inkscape',
             'svg': svg_base64,
-            'size': len(svg_data)
+            'size': len(svg_data),
+            'settings': {
+                'threshold': threshold,
+                'smooth_corners': smooth_corners,
+                'optimize': optimize,
+                'suppress_speckles': suppress_speckles
+            }
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -290,6 +308,7 @@ def process_both():
 def health():
     return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
 
+
 @app.route('/inkscape-version', methods=['GET'])
 def inkscape_version():
     try:
@@ -297,6 +316,7 @@ def inkscape_version():
         return jsonify({"version": result.decode().strip()})
     except Exception as e:
         return jsonify({"error": str(e)})
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
