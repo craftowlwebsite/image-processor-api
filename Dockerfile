@@ -1,9 +1,10 @@
 FROM python:3.11
 
-# Install ImageMagick + Potrace
+# Install ImageMagick + Potrace + Inkscape
 RUN apt-get update && apt-get install -y \
     imagemagick \
     potrace \
+    inkscape \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
