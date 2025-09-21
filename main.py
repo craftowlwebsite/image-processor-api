@@ -68,13 +68,11 @@ def convert_png_to_svg_potrace(png_data,
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Step 1: threshold with ImageMagick
         subprocess.run(
             ["magick", temp_in_path, "-threshold", str(threshold), temp_pbm],
             check=True
         )
 
-        # Step 2: trace with Potrace
         subprocess.run([
             "potrace", "-s",
             "--turdsize", str(turdsize),
@@ -278,6 +276,39 @@ def svg_inkscape():
                 'optimize': optimize,
                 'suppress_speckles': suppress_speckles
             }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/process-both-magick', methods=['POST'])
+def process_both_magick():
+    """Return both transparent PNG and ImageMagick SVG"""
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        data = request.json
+        if 'url' in data:
+            response = requests.get(data['url'])
+            image_data = response.content
+        elif 'base64' in data:
+            image_data = base64.b64decode(data['base64'])
+        else:
+            return jsonify({'error': 'No image provided'}), 400
+
+        processed_png_data = make_transparent(image_data)
+        processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
+
+        svg_data = convert_png_to_svg_magick(image_data)
+        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
+
+        return jsonify({
+            'success': True,
+            'transparent_png': processed_png_base64,
+            'svg': svg_base64,
+            'png_size': len(processed_png_data),
+            'svg_size': len(svg_data),
+            'engine': 'magick'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
