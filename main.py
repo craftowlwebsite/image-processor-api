@@ -57,8 +57,13 @@ def make_transparent(image_data, threshold=200):
     except Exception as e:
         raise Exception(f"Error creating transparent version: {str(e)}")
 
-def convert_png_to_svg(png_data):
-    """Convert PNG bytes to vectorized SVG using Potrace"""
+def convert_png_to_svg(png_data,
+                       alphamax="3.0",
+                       opttolerance="2.0",
+                       turdsize="150",
+                       dither="ordered",
+                       blur=None):
+    """Convert PNG bytes to vectorized SVG using Potrace, with optional blur smoothing"""
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
             temp_in.write(png_data)
@@ -68,20 +73,24 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG to PBM for Potrace (flatten alpha to white, no re-thresholding)
-        subprocess.run(
-            ["magick", temp_in_path,
-            "-blur", "0x0.5",   # small Gaussian blur
-            "-alpha", "off",
-            temp_pbm],
-            check=True
-        )
+        # Build ImageMagick command
+        magick_cmd = ["magick", temp_in_path]
+        if blur and blur != "0":
+            magick_cmd.extend(["-blur", blur])
+        magick_cmd.extend(["-alpha", "off", temp_pbm])
 
-        # Run Potrace to vectorize PBM → SVG
-        subprocess.run(
-            ["potrace", "-s", "-o", temp_out_path, temp_pbm],
-            check=True
-        )
+        subprocess.run(magick_cmd, check=True)
+
+        # Run Potrace
+        potrace_cmd = [
+            "potrace", "-s",
+            "--turdsize", str(turdsize),
+            "--alphamax", str(alphamax),
+            "--opttolerance", str(opttolerance),
+            "-o", temp_out_path,
+            temp_pbm
+        ]
+        subprocess.run(potrace_cmd, check=True)
 
         with open(temp_out_path, "rb") as f:
             svg_data = f.read()
@@ -143,14 +152,21 @@ def svg_only():
         threshold = int(data.get('threshold', 200))
         processed_png_data = make_transparent(image_data, threshold)
 
-        svg_data = convert_png_to_svg(processed_png_data)
+        alphamax = data.get('alphamax', "3.0")
+        opttolerance = data.get('opttolerance', "2.0")
+        turdsize = data.get('turdsize', "150")
+        dither = data.get('dither', "ordered")
+        blur = data.get('blur', None)
+
+        svg_data = convert_png_to_svg(processed_png_data, alphamax, opttolerance, turdsize, dither, blur)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
 
         return jsonify({
             'success': True,
             'svg': svg_base64,
             'size': len(svg_data),
-            'threshold': threshold
+            'threshold': threshold,
+            'blur': blur
         })
 
     except Exception as e:
@@ -175,7 +191,13 @@ def process_both():
         processed_png_data = make_transparent(image_data, threshold)
         processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
 
-        svg_data = convert_png_to_svg(processed_png_data)
+        alphamax = data.get('alphamax', "3.0")
+        opttolerance = data.get('opttolerance', "2.0")
+        turdsize = data.get('turdsize', "150")
+        dither = data.get('dither', "ordered")
+        blur = data.get('blur', None)
+
+        svg_data = convert_png_to_svg(processed_png_data, alphamax, opttolerance, turdsize, dither, blur)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
 
         return jsonify({
@@ -184,7 +206,8 @@ def process_both():
             'svg': svg_base64,
             'png_size': len(processed_png_data),
             'svg_size': len(svg_data),
-            'threshold': threshold
+            'threshold': threshold,
+            'blur': blur
         })
 
     except Exception as e:
