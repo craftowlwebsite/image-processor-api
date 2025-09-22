@@ -16,8 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
-COPY imagemagick-config /etc/ImageMagick-7/
 
+# Copy macOS ImageMagick config into the correct Linux path
+COPY imagemagick-config /usr/local/etc/ImageMagick-7/
+
+# Explicitly tell ImageMagick to use this config
+ENV MAGICK_CONFIGURE_PATH=/usr/local/etc/ImageMagick-7/
 
 # Expose port
 EXPOSE 8080
