@@ -25,7 +25,7 @@ def authenticate():
     except:
         return False
 
-def make_transparent(image_data, threshold=150):
+def make_transparent(image_data, threshold=200):
     """Convert PNG to binary black and transparent with adjustable threshold"""
     try:
         img = Image.open(io.BytesIO(image_data))
@@ -68,9 +68,9 @@ def convert_png_to_svg(png_data):
         temp_pbm = tempfile.mktemp(suffix=".pbm")
         temp_out_path = tempfile.mktemp(suffix=".svg")
 
-        # Convert PNG to PBM (bitmap format for Potrace)
+        # Convert PNG to PBM for Potrace (flatten alpha to white, no re-thresholding)
         subprocess.run(
-            ["magick", temp_in_path, "-threshold", "50%", temp_pbm],
+            ["magick", temp_in_path, "-alpha", "off", temp_pbm],
             check=True
         )
 
@@ -138,7 +138,6 @@ def svg_only():
             return jsonify({'error': 'No image provided'}), 400
 
         threshold = int(data.get('threshold', 200))
-        # Run transparency step before SVG conversion
         processed_png_data = make_transparent(image_data, threshold)
 
         svg_data = convert_png_to_svg(processed_png_data)
