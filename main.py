@@ -62,7 +62,7 @@ def convert_png_to_svg(png_data,
                        opttolerance="2.0",
                        turdsize="150",
                        dither="ordered",
-                       blur=None):
+                       blur="0x0.5"):
     """Convert PNG bytes to vectorized SVG using Potrace, with optional blur smoothing"""
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
@@ -156,66 +156,4 @@ def svg_only():
         opttolerance = data.get('opttolerance', "2.0")
         turdsize = data.get('turdsize', "150")
         dither = data.get('dither', "ordered")
-        blur = data.get('blur', None)
-
-        svg_data = convert_png_to_svg(processed_png_data, alphamax, opttolerance, turdsize, dither, blur)
-        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
-
-        return jsonify({
-            'success': True,
-            'svg': svg_base64,
-            'size': len(svg_data),
-            'threshold': threshold,
-            'blur': blur
-        })
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/process-both', methods=['POST'])
-def process_both():
-    if not authenticate():
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    try:
-        data = request.json
-        if 'url' in data:
-            response = requests.get(data['url'])
-            image_data = response.content
-        elif 'base64' in data:
-            image_data = base64.b64decode(data['base64'])
-        else:
-            return jsonify({'error': 'No image provided'}), 400
-
-        threshold = int(data.get('threshold', 200))
-        processed_png_data = make_transparent(image_data, threshold)
-        processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
-
-        alphamax = data.get('alphamax', "3.0")
-        opttolerance = data.get('opttolerance', "2.0")
-        turdsize = data.get('turdsize', "150")
-        dither = data.get('dither', "ordered")
-        blur = data.get('blur', None)
-
-        svg_data = convert_png_to_svg(processed_png_data, alphamax, opttolerance, turdsize, dither, blur)
-        svg_base64 = base64.b64encode(svg_data).decode('utf-8')
-
-        return jsonify({
-            'success': True,
-            'transparent_png': processed_png_base64,
-            'svg': svg_base64,
-            'png_size': len(processed_png_data),
-            'svg_size': len(svg_data),
-            'threshold': threshold,
-            'blur': blur
-        })
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'healthy', 'target_size': TARGET_SIZE})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+        blur = data.get('blur', "0x
