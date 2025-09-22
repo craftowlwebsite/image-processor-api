@@ -25,7 +25,7 @@ def authenticate():
     except:
         return False
 
-def make_transparent(image_data):
+def make_transparent(image_data, threshold=200):
     """Convert PNG to binary black and transparent"""
     try:
         img = Image.open(io.BytesIO(image_data))
@@ -40,7 +40,7 @@ def make_transparent(image_data):
             r, g, b, a = item
             brightness = (0.299 * r + 0.587 * g + 0.114 * b)
 
-            if brightness < 200 and a > 0:
+            if brightness < threshold and a > 0:
                 new_data.append((0, 0, 0, 255))  # Pure black
             else:
                 new_data.append((255, 255, 255, 0))  # Transparent
