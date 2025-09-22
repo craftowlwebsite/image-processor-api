@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
 
 # Build and install ImageMagick 7.1.1-44 from source
 WORKDIR /tmp
-RUN wget https://download.imagemagick.org/ImageMagick/download/releases/ImageMagick-7.1.1-44.tar.gz && \
+RUN wget https://download.imagemagick.org/archive/releases/ImageMagick-7.1.1-44.tar.gz && \
     tar xzf ImageMagick-7.1.1-44.tar.gz && \
     cd ImageMagick-7.1.1-44 && \
     ./configure --with-modules --enable-shared --with-rsvg --with-heic --with-webp && \
