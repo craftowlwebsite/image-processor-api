@@ -70,7 +70,10 @@ def convert_png_to_svg(png_data):
 
         # Convert PNG to PBM for Potrace (flatten alpha to white, no re-thresholding)
         subprocess.run(
-            ["magick", temp_in_path, "-alpha", "off", temp_pbm],
+            ["magick", temp_in_path,
+            "-blur", "0x0.5",   # small Gaussian blur
+            "-alpha", "off",
+            temp_pbm],
             check=True
         )
 
