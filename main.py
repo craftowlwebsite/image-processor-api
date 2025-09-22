@@ -25,7 +25,7 @@ def authenticate():
     except:
         return False
 
-def make_transparent(image_data, threshold=180):
+def make_transparent(image_data, threshold=150):
     """Convert PNG to binary black and transparent with adjustable threshold"""
     try:
         img = Image.open(io.BytesIO(image_data))
