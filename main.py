@@ -26,7 +26,7 @@ def authenticate():
         return False
 
 def make_transparent(image_data, threshold=200):
-    """Convert PNG to binary black and transparent"""
+    """Convert PNG to binary black and transparent with adjustable threshold"""
     try:
         img = Image.open(io.BytesIO(image_data))
 
@@ -108,13 +108,15 @@ def transparent_only():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        processed_data = make_transparent(image_data)
+        threshold = int(data.get('threshold', 200))
+        processed_data = make_transparent(image_data, threshold)
         processed_base64 = base64.b64encode(processed_data).decode('utf-8')
 
         return jsonify({
             'success': True,
             'processed_image': processed_base64,
-            'size': len(processed_data)
+            'size': len(processed_data),
+            'threshold': threshold
         })
 
     except Exception as e:
@@ -135,13 +137,18 @@ def svg_only():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        svg_data = convert_png_to_svg(image_data)
+        threshold = int(data.get('threshold', 200))
+        # Run transparency step before SVG conversion
+        processed_png_data = make_transparent(image_data, threshold)
+
+        svg_data = convert_png_to_svg(processed_png_data)
         svg_base64 = base64.b64encode(svg_data).decode('utf-8')
 
         return jsonify({
             'success': True,
             'svg': svg_base64,
-            'size': len(svg_data)
+            'size': len(svg_data),
+            'threshold': threshold
         })
 
     except Exception as e:
@@ -162,7 +169,8 @@ def process_both():
         else:
             return jsonify({'error': 'No image provided'}), 400
 
-        processed_png_data = make_transparent(image_data)
+        threshold = int(data.get('threshold', 200))
+        processed_png_data = make_transparent(image_data, threshold)
         processed_png_base64 = base64.b64encode(processed_png_data).decode('utf-8')
 
         svg_data = convert_png_to_svg(processed_png_data)
@@ -173,7 +181,8 @@ def process_both():
             'transparent_png': processed_png_base64,
             'svg': svg_base64,
             'png_size': len(processed_png_data),
-            'svg_size': len(svg_data)
+            'svg_size': len(svg_data),
+            'threshold': threshold
         })
 
     except Exception as e:
