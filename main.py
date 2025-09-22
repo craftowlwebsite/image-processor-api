@@ -156,4 +156,4 @@ def svg_only():
         opttolerance = data.get('opttolerance', "2.0")
         turdsize = data.get('turdsize', "150")
         dither = data.get('dither', "ordered")
-        blur = data.get('blur', "0x
+        blur = data.get('blur', "0x1")
